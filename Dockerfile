@@ -1,34 +1,92 @@
-FROM ubuntu:16.04
-ENV DEBIAN_FRONTEND noninteractive
-	# activate i386 arch for Wine and install stuff we need
-RUN dpkg --add-architecture i386 && \
-	apt-get update && \
-        BUILD_PACKAGES='wget software-properties-common unzip apt-transport-https openssh-server xauth cabextract winbind squashfs-tools pulseaudio sudo x11-apps xfce4 c
-ups joe xfce4-terminal xvfb socat x11vnc firefox' &&\
-	apt-get -qy upgrade && apt-get -qy install $BUILD_PACKAGES && \
-        AUTO_ADDED_PACKAGES=`apt-mark showauto` && \	
-	# install latest Wine
-	wget -qO- https://dl.winehq.org/wine-builds/Release.key | apt-key add - && \
-	apt-add-repository https://dl.winehq.org/wine-builds/ubuntu/ && \
-	apt-get update && apt-get -qy install --install-recommends winehq-devel && \
-	# create our user for Wine
-useradd -d /home/gg -m -s /bin/bash gg && \
-echo gg:gg | chpasswd && \ 
-	# winetricks
-	wget https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks -O /tmp/winetricks && \
-	chmod +x /tmp/winetricks
-        USER gg 
-ENV WINEDEBUG=-all WINEPREFIX=/home/gg/.wine WINEARCH=win32
-RUN winecfg && \
-xvfb-run -a /tmp/winetricks -q vcrun2010 dotnet40 gdiplus comctl32 ie8 
-        USER root	
-	RUN apt-get autoremove -y --purge software-properties-common && \
-	apt-get autoremove -y --purge && \
-	apt-get remove --purge -y $BUILD_PACKAGES $AUTO_ADDED_PACKAGES && \
-	apt-get clean -y && \
-	rm -rf /home/wine/.cache && \
-	rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-USER gg
-RUN wget -q -O- http://captvty.fr/ | egrep -o '\/\/.+?\.zip' | sed 's/\/\//http:\/\//' | xargs wget -O /tmp/Captvty.zip && \
-ls -alrt /tmp/Cap*zip && unzip -d  ~/Captvty /tmp/Captvty.zip && rm /tmp/Captvty.zip
-CMD wine /home/gg/Captvty/Captvty.exe
+FROM proxy-docker.sourdin.ovh/ubuntu:20.04
+# inspired by webanck/docker-wine-steam, https://github.com/mrorgues/dockerfiles, https://github.com/k3ck3c/docker_captvty, https://github.com/scottyhardy/docker-remote-desktop
+ENV DEBIAN_FRONTEND=noninteractive \
+    DEBCONF_NONINTERACTIVE_SEEN=true \
+    TZ="Europe/Paris" \
+    LANGUAGE="fr_FR.UTF-8" \
+    LANG="fr_FR.UTF-8" \
+	WINEARCH="win32" \
+    WINEPREFIX="/home/ubuntu/.wine" \
+    USER=root  \
+    XDG_CACHE_HOME="/home/ubuntu/.cache}"
+RUN apt-get update && \
+    apt-get install -y \
+        curl \
+        mesa-utils \
+        unzip  \	
+        apt-transport-https \
+        bzip2 \
+        ca-certificates \
+        gnupg \
+        language-pack-en \
+        language-pack-fr \
+        locales \
+        tzdata \
+        wget \
+		xauth \ 
+		cabextract \ 
+		winbind \ 
+		squashfs-tools  \ 
+		xvfb \
+        dbus-x11 \
+        git \
+        locales \
+        sudo \
+        x11-xserver-utils \
+        xfce4 \
+        xorgxrdp \
+        xrdp \
+        xterm  \
+        xubuntu-icon-theme 	 \
+        software-properties-common  \
+        --no-install-recommends && \
+    echo "${TZ}" > /etc/timezone && \
+    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    dpkg-reconfigure --frontend noninteractive tzdata && \
+    locale-gen ${LANGUAGE} && \
+    dpkg-reconfigure --frontend noninteractive locales && \
+    dpkg --add-architecture i386 && \
+    wget -nc -P /tmp https://dl.winehq.org/wine-builds/winehq.key && \
+    apt-key add /tmp/winehq.key && \
+    rm /tmp/winehq.key && \
+    apt-add-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ focal main' && \
+    add-apt-repository ppa:cybermax-dexter/sdl2-backport && \
+    echo ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true | debconf-set-selections && \
+    apt-get update && \
+    apt-get install -y \
+        gettext \
+        libwine \		
+        netcat \
+        ttf-mscorefonts-installer \
+        winbind \
+		p11-kit:i386  \
+        winehq-staging && \
+	rm -rf /var/lib/apt/lists/* /var/cache/apt/* && \	
+    wget https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks && \
+    chmod +x winetricks && \
+    mv winetricks /usr/bin/winetricks && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd --gid 1020 ubuntu && \
+    useradd --shell /bin/bash --uid 1020 --gid 1020 --password $(openssl passwd ubuntu) --create-home --home-dir /home/ubuntu ubuntu && \
+    usermod -aG sudo ubuntu && \
+    mkdir -p /tmp/captvty  && \
+    chown -R 1020:1020 /home/ubuntu && \
+    chown -R 1020:1020 /tmp/captvty 
+USER 1020
+ENV PATH=$PATH:/tmp/captvty
+RUN DOWNLOAD_LINK=$(curl -c /tmp/cookie http://v3.captvty.fr/ | sed -n 's/.*href="\([^"]*\).*/\1/p' | grep zip) && \
+    DOWNLOAD_LINK="http:"${DOWNLOAD_LINK} && \
+    wineboot --init &&\
+    curl -fLo /tmp/captvty.zip  -b /tmp/cookie ${DOWNLOAD_LINK} && \
+    rm /tmp/cookie && \
+    mkdir /tmp/captvty/videos && \    
+    unzip /tmp/captvty.zip -d /tmp/captvty && \
+    rm /tmp/captvty.zip  && \
+	winetricks --unattended --force win7 dotnet452 corefonts gdiplus fontsmooth=rgb &&\
+    wine uninstaller --remove '{E45D8920-A758-4088-B6C6-31DBB276992E}'
+USER root
+COPY entrypoint.sh /usr/bin/entrypoint
+COPY Captvty.config /tmp/captvty/Captvty.config
+COPY Captvty.exe.config /tmp/captvty/Captvty.exe.config
+EXPOSE 3389/tcp
+ENTRYPOINT ["/usr/bin/entrypoint"]

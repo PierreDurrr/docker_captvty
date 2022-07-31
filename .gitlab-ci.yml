@@ -1,0 +1,20 @@
+stages:
+  - build
+
+variables:
+  DOCKER_DRIVER: overlay2
+
+services:
+  - docker:dind
+
+captvty:
+  image: docker
+  stage: build
+  when: always
+  script:
+    - docker login $REGISTRY -u $REGISTRY_USER -p $REGISTRY_PASSWORD
+    - docker build -t $REGISTRY/windows/captvty:1.0.0 .
+    - docker push $REGISTRY/windows/captvty:1.0.0
+    - docker logout $REGISTRY
+  only:
+  - tags
