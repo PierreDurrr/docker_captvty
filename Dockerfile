@@ -1,4 +1,4 @@
-FROM proxy-docker.sourdin.ovh/ubuntu:20.04
+FROM ubuntu:20.04
 # inspired by webanck/docker-wine-steam, https://github.com/mrorgues/dockerfiles, https://github.com/k3ck3c/docker_captvty, https://github.com/scottyhardy/docker-remote-desktop
 ENV DEBIAN_FRONTEND=noninteractive \
     DEBCONF_NONINTERACTIVE_SEEN=true \
